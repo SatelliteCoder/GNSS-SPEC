@@ -78,7 +78,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - RTKLIB for inspiration
 - GPSTk for reference implementations
-- Professor [Name] from Shandong University of Science and Technology for guidance
 
 ---
 
