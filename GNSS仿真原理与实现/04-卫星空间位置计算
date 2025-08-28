@@ -1,0 +1,283 @@
+好的，我们将以 GitHub README 的风格，极尽详细地阐述 GNSS 信号仿真中的核心环节——**卫星位置计算**。
+
+---
+
+<p align="center">
+  <img src="https://img.icons8.com/dusk/64/artificial-satellite.png" alt="Satellite" width="80"/>
+  <br>
+  <strong>GNSS Satellite Position Computation</strong>
+</p>
+<h1 align="center">
+  📡 🛰️ 🗺️
+  <br>
+  A Comprehensive Guide for Signal Simulation
+</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Maintained-brightgreen.svg" alt="Status"/>
+  <img src="https://img.shields.io/badge/Field-GNSS%20Simulation-blue.svg" alt="Field"/>
+  <img src="https://img.shields.io/badge/Difficulty-Advanced-orange.svg" alt="Difficulty"/>
+  <img src="https://img.shields.io/badge/Language-Matlab%20|%20Python%20|%20C++-yellowgreen.svg" alt="Language"/>
+</p>
+
+---
+
+## 📖 Table of Contents
+
+- [📖 Table of Contents](#-table-of-contents)
+- [🚀 Overview](#-overview)
+- [📊 Input: Broadcast Ephemeris Parameters](#-input-broadcast-ephemeris-parameters)
+- [⚙️ Core Computation Steps](#️-core-computation-steps)
+  - [Step 1: Compute Time Offset `t_k`](#step-1-compute-time-offset-t_k)
+  - [Step 2: Compute Corrected Mean Motion `n`](#step-2-compute-corrected-mean-motion-n)
+  - [Step 3: Compute Mean Anomaly `M_k`](#step-3-compute-mean-anomaly-m_k)
+  - [Step 4: Solve for Eccentric Anomaly `E_k` (Iteratively)](#step-4-solve-for-eccentric-anomaly-e_k-iteratively)
+  - [Step 5: Compute True Anomaly `ν_k`](#step-5-compute-true-anomaly-ν_k)
+  - [Step 6: Compute Argument of Latitude `Φ_k`](#step-6-compute-argument-of-latitude-φ_k)
+  - [Step 7: Apply Perturbation Corrections](#step-7-apply-perturbation-corrections)
+  - [Step 8: Compute Position in Orbital Plane](#step-8-compute-position-in-orbital-plane)
+  - [Step 9: Transform to ECEF Coordinates `(X, Y, Z)`](#step-9-transform-to-ecef-coordinates-x-y-z)
+- [🧪 Example Code Snippet (Python)](#-example-code-snippet-python)
+- [⚠️ Important Considerations](#️-important-considerations)
+- [🔚 Conclusion](#-conclusion)
+- [📚 References](#-references)
+
+---
+
+## 🚀 Overview
+
+This document details the algorithm for computing a GNSS satellite's precise position in the Earth-Centered, Earth-Fixed (ECEF) coordinate frame at a specific time `t`. This position, denoted as `(X_s, Y_s, Z_s)`, is fundamental for:
+
+- **📡 Simulating GNSS RF Signals:** Generating the correct code phase and Doppler shift.
+- **🧭 Receiver Testing & Validation:** Providing ground truth for positioning algorithms.
+- **🎯 High-Fidelity Simulation:** Modeling effects like atmospheric delay and multipath based on precise geometry.
+
+The computation transforms a set of **Keplerian orbital parameters** and **perturbation correction terms** (broadcast in the satellite's navigation message) into a 3D Cartesian position.
+
+---
+
+## 📊 Input: Broadcast Ephemeris Parameters
+
+The calculation relies entirely on the **Broadcast Ephemeris** data set for each satellite. A typical set includes 16 parameters. The table below describes them, along with their common symbols and units.
+
+| Parameter (Typical Name) | Description | Symbol | Units |
+| :--- | :--- | :--- | :--- |
+| `sqrtA` | Square root of the semi-major axis | $\sqrt{A}$ | $\sqrt{m}$ |
+| `e` | Eccentricity | $e$ | dimensionless |
+| `i0` | Inclination angle at reference time | $i_0$ | semi-circle 🫓 |
+| `Omega0` | Longitude of ascending node at reference time | $\Omega_0$ | semi-circle 🫓 |
+| `omega` | Argument of perigee | $\omega$ | semi-circle 🫓 |
+| `M0` | Mean anomaly at reference time | $M_0$ | semi-circle 🫓 |
+| `Delta_n` | Mean motion difference from computed value | $\Delta n$ | semi-circle/s |
+| `IDOT` | Rate of change of inclination angle | $\dot{i}$ | semi-circle/s |
+| `OmegaDot` | Rate of change of right ascension | $\dot{\Omega}$ | semi-circle/s |
+| `Cuc`, `Cus` | Argument of latitude correction amplitudes | $C_{uc}$, $C_{us}$ | rad |
+| `Crc`, `Crs` | Orbital radius correction amplitudes | $C_{rc}$, $C_{rs}$ | m |
+| `Cic`, `Cis` | Inclination correction amplitudes | $C_{ic}$, $C_{is}$ | rad |
+| `toe` | **Time of Ephemeris** (reference time) | $t_{oe}$ | s |
+| `IODE` | Issue of Data Ephemeris | | |
+
+**🛑 CRITICAL NOTE:** Angles in the navigation message are typically provided in **semi-circles**. You **MUST** convert them to radians for use in trigonometric functions: `radians = semi_circle * pi`.
+
+---
+
+## ⚙️ Core Computation Steps
+
+The following steps compute the satellite position for a desired GPS system time `t`.
+
+### Step 1: Compute Time Offset `t_k`
+
+First, find the time from the ephemeris reference epoch. Account for the end-of-week rollover.
+
+```python
+t_k = t - t_oe
+
+# If t_k is greater than 302,400 seconds (half a week), subtract 604,800
+# If t_k is less than -302,400 seconds, add 604,800
+if t_k > 302400:
+    t_k -= 604800
+elif t_k < -302400:
+    t_k += 604800
+```
+
+### Step 2: Compute Corrected Mean Motion `n`
+
+Calculate the theoretical mean motion `n0` and then correct it with the `Delta_n` parameter from the ephemeris.
+
+```python
+GM = 3.9860050e14  # Earth's gravitational constant for GPS (m³/s²)
+A = (sqrtA)**2     # Semi-major axis (m)
+n0 = math.sqrt(GM / A**3) # Theoretical mean motion (rad/s)
+n = n0 + Delta_n   # Corrected mean motion (rad/s)
+```
+
+### Step 3: Compute Mean Anomaly `M_k`
+
+The mean anomaly `M_k` at time `t_k` propagates linearly from the reference value `M0`.
+
+```python
+M_k = M0 + n * t_k  # (rad)
+```
+
+### Step 4: Solve for Eccentric Anomaly `E_k` (Iteratively)
+
+Solve Kepler's equation `M_k = E_k - e * sin(E_k)` for the eccentric anomaly `E_k` using the Newton-Raphson method. Initial guess `E_k = M_k` is usually sufficient.
+
+```python
+E_k = M_k  # Initial guess
+delta_E = 1
+iteration_count = 0
+max_iterations = 10
+tolerance = 1e-12
+
+while abs(delta_E) > tolerance and iteration_count < max_iterations:
+    delta_M = M_k - (E_k - e * math.sin(E_k))
+    delta_E = delta_M / (1 - e * math.cos(E_k))
+    E_k += delta_E
+    iteration_count += 1
+```
+
+### Step 5: Compute True Anomaly `ν_k`
+
+Compute the true anomaly from the eccentric anomaly and eccentricity. Use the `atan2` function for correct quadrant placement.
+
+```python
+sin_nu_k = (math.sqrt(1 - e**2) * math.sin(E_k)) / (1 - e * math.cos(E_k))
+cos_nu_k = (math.cos(E_k) - e) / (1 - e * math.cos(E_k))
+nu_k = math.atan2(sin_nu_k, cos_nu_k) # True Anomaly (rad)
+```
+
+### Step 6: Compute Argument of Latitude `Φ_k`
+
+Add the true anomaly to the argument of perigee.
+
+```python
+Phi_k = nu_k + omega # Argument of Latitude (rad)
+```
+
+### Step 7: Apply Perturbation Corrections
+
+Apply second-order harmonic perturbations to the argument of latitude, orbital radius, and inclination.
+
+```python
+# Perturbation corrections
+delta_u_k = Cus * math.sin(2 * Phi_k) + Cuc * math.cos(2 * Phi_k) # Arg. of Lat. correction
+delta_r_k = Crs * math.sin(2 * Phi_k) + Crc * math.cos(2 * Phi_k) # Radius correction
+delta_i_k = Cis * math.sin(2 * Phi_k) + Cic * math.cos(2 * Phi_k) # Inclination correction
+
+# Apply corrections
+u_k = Phi_k + delta_u_k # Corrected argument of latitude
+r_k = A * (1 - e * math.cos(E_k)) + delta_r_k # Corrected radius
+i_k = i0 + IDOT * t_k + delta_i_k # Corrected inclination
+```
+
+### Step 8: Compute Position in Orbital Plane
+
+Calculate the satellite's 2D position within its orbital plane.
+
+```python
+x_k_prime = r_k * math.cos(u_k) # Position in orbital plane
+y_k_prime = r_k * math.sin(u_k) # Position in orbital plane
+```
+
+### Step 9: Transform to ECEF Coordinates `(X, Y, Z)`
+
+Transform the in-plane coordinates to the ECEF frame by accounting for the corrected inclination `i_k` and the longitude of the ascending node `Omega_k`.
+
+```python
+# Calculate the corrected longitude of the ascending node
+OmegaDot_e = 7.2921151467e-5  # Earth rotation rate (rad/s)
+Omega_k = Omega0 + (OmegaDot - OmegaDot_e) * t_k - OmegaDot_e * t_oe
+
+# Perform the 3D rotation (orbital plane -> ECEF)
+X = x_k_prime * math.cos(Omega_k) - y_k_prime * math.cos(i_k) * math.sin(Omega_k)
+Y = x_k_prime * math.sin(Omega_k) + y_k_prime * math.cos(i_k) * math.cos(Omega_k)
+Z = y_k_prime * math.sin(i_k)
+```
+**🎯 The result `(X, Y, Z)` is the satellite's position in ECEF coordinates at time `t`.**
+
+---
+
+## 🧪 Example Code Snippet (Python)
+
+```python
+import math
+
+def compute_sat_pos(ephemeris, t):
+    """
+    Computes ECEF XYZ satellite position for a given ephemeris and GPS time.
+    Args:
+        ephemeris: dict containing all broadcast ephemeris parameters.
+        t: GPS time of week (seconds).
+    Returns:
+        (X, Y, Z): ECEF coordinates in meters.
+    """
+    # --- Extract parameters (ensure units converted from semi-circles to radians) ---
+    # ... (code to extract e, sqrtA, M0, Omega0, i0, omega, Delta_n, IDOT, OmegaDot,
+    #      Cuc, Cus, Crc, Crs, Cic, Cis, toe)
+    
+    # --- Step 1: Compute time from ephemeris reference epoch ---
+    t_k = t - toe
+    if t_k > 302400:
+        t_k -= 604800
+    elif t_k < -302400:
+        t_k += 604800
+
+    # --- Step 2: Compute corrected mean motion ---
+    A = (sqrtA)**2
+    n0 = math.sqrt(GM / A**3)
+    n = n0 + Delta_n
+
+    # --- Steps 3-5: Compute true anomaly ---
+    M_k = M0 + n * t_k
+    E_k = solve_kepler(M_k, e) # Call iterative solver function
+    nu_k = math.atan2(math.sqrt(1-e**2)*math.sin(E_k), math.cos(E_k)-e)
+
+    # --- Steps 6-7: Compute corrected orbital parameters ---
+    Phi_k = nu_k + omega
+    delta_u = Cus * math.sin(2*Phi_k) + Cuc * math.cos(2*Phi_k)
+    delta_r = Crs * math.sin(2*Phi_k) + Crc * math.cos(2*Phi_k)
+    delta_i = Cis * math.sin(2*Phi_k) + Cic * math.cos(2*Phi_k)
+    u_k = Phi_k + delta_u
+    r_k = A * (1 - e * math.cos(E_k)) + delta_r
+    i_k = i0 + IDOT * t_k + delta_i
+
+    # --- Steps 8-9: Compute position in orbital plane and rotate to ECEF ---
+    x_k_prime = r_k * math.cos(u_k)
+    y_k_prime = r_k * math.sin(u_k)
+    Omega_k = Omega0 + (OmegaDot - OMEGA_DOT_E) * t_k - OMEGA_DOT_E * toe
+    X = x_k_prime * math.cos(Omega_k) - y_k_prime * math.cos(i_k) * math.sin(Omega_k)
+    Y = x_k_prime * math.sin(Omega_k) + y_k_prime * math.cos(i_k) * math.cos(Omega_k)
+    Z = y_k_prime * math.sin(i_k)
+
+    return (X, Y, Z)
+```
+
+---
+
+## ⚠️ Important Considerations
+
+- **🗓️ Week Number Rollover (WNRO):** Always check if `t_k` (GPS Time of Week) needs adjustment by ± 604800 seconds to stay within one week of the reference time `t_oe`.
+- **🧮 Unit Conversion:** This is the most common source of error. **Ensure all angles from the navigation message (e.g., `M0`, `omega`, `Omega0`, `i0`) are converted from semi-circles to radians.**
+- **⏰ Ephemeris Validity:** Broadcast ephemerides are typically valid for 2-4 hours centered on `t_oe`. Using them outside this window results in rapidly decaying accuracy.
+- **🎯 Accuracy:** The expected accuracy of positions computed from broadcast ephemeris is **~1-2 meters RMS**. For higher precision (cm-level), post-processed **Precise Ephemeris** files must be used.
+- **🔄 Earth Rotation Correction (Sagnac):** The computed position `(X, Y, Z)` is valid at the **signal transmission time** `t_{sv}`. For extremely high-fidelity simulation, the satellite position may need to be rotated to account for Earth's rotation during the signal's time of flight to the receiver. This is often handled in a separate channel model.
+
+---
+
+## 🔚 Conclusion
+
+The satellite position computation algorithm is a deterministic process that transforms Keplerian parameters and perturbation terms into a precise ECEF coordinate. Mastery of this algorithm is essential for anyone working in GNSS signal simulation, receiver design, or high-precision positioning.
+
+---
+
+## 📚 References
+
+1.  IS-GPS-200, Navstar GPS Space Segment/Navigation User Segment Interfaces
+2.  European GNSS (Galileo) Open Service Signal In Space Interface Control Document (OS SIS ICD)
+3.  BeiDou Navigation Satellite System Signal In Space Interface Control Document Open Service Signal B1I (Version 3.0)
+4.  **Hofmann-Wellenhof, B., Lichtenegger, H., & Wasle, E. (2007). *GNSS - Global Navigation Satellite Systems.* Springer-Verlag Wien.** - The definitive textbook on the subject.
+
+<p align="center">
+  <sub>Made with 📡 and ❤️ for GNSS</sub>
+</p>
