@@ -113,16 +113,17 @@ python examples/tracking_demo.py
 ### BDS / 北斗 (中国)
 - ✅ B1I (BPSK(2))
 - ✅ B3I (BPSK(10))
-- 📋 B1C (QMBOC) — 规划中
-- 📋 B2a (BPSK(10)) — 规划中
+- ✅ B1C (QMBOC)
+- ✅ B2a (BPSK(10))
+- ✅ B2b (BPSK(10))
 
 ### Galileo (欧盟)
-- 📋 E1 OS (CBOC) — 规划中
-- 📋 E5a (AltBOC) — 规划中
+- ✅ E1 OS (CBOC) 
+- 📋 E5a (AltBOC) — 进行中
 
 ### GLONASS (俄罗斯)
-- 📋 L1 SP (FDMA) — 规划中
-
+- ✅ L1 SP (FDMA)
+- ✅ L2 SP (FDMA)
 ---
 
 ## 🧮 误差模型
