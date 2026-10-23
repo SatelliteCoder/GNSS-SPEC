@@ -1,6 +1,6 @@
 # GNSS-SPEC: GNSS Signal Processing & Education Center
 
-**GNSS-SPEC** (GNSS Signal Processing & Education Center) 是一个面向教育与研究的开源 GNSS 信号仿真平台，配套的GNSS信号基带信号仿真源码暂未开源，有需要的可以私信。项目提供从信号生成、误差建模、信号处理到定位解算的完整链路，以及详细的原理文档和学习指南。
+**GNSS-SPEC** (GNSS Signal Processing & Education Center) 是一个面向教育与研究的开源GNSS信号仿真平台，项目提供从信号生成、误差建模、信号处理到定位解算的完整链路，以及详细的原理文档和学习指南。配套的GNSS信号基带信号仿真源码暂未开源，有需要的可以私信。
 
 ## ✨ 特性
 
